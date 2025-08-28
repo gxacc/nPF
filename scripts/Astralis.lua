@@ -19,6 +19,7 @@ local Players = game:GetService("Players")
 local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local Lighting = cloneref(game:GetService("Lighting"));
 
 -- Module Cache
 local moduleCache
@@ -238,6 +239,20 @@ local Settings = {
             Material = Enum.Material.SmoothPlastic,
             Transparency = 0,
             RemoveTextures = false
+        }
+    },
+    Lighting = {
+        Ambient = {
+            Enabled = false,
+            Color = Color3.fromRGB(255, 255, 255)
+        },
+        OutdoorAmbient = {
+            Enabled = false,
+            Color = Color3.fromRGB(255, 255, 255)
+        },
+        ClockTime = {
+            Enabled = false,
+            Time = 12
         }
     }
 }
@@ -2131,6 +2146,95 @@ ViewModelChams:AddSlider({
         updateViewModelChams()
     end
 })
+
+local LightingSec = Tabs.Misc:CreateSection({Name = "Lighting", Side = "Left"})
+
+local function UpdateLighting()
+    Lighting.Ambient = Settings.Lighting.Ambient.Color
+    Lighting.OutdoorAmbient = Settings.Lighting.OutdoorAmbient.Color
+    Lighting.ClockTime = Settings.Lighting.ClockTime.Time
+end
+
+LightingSec:AddToggle({
+    Name = "Ambient Enabled",
+    Flag = "AmbientEnabled",
+    Value = Settings.Lighting.Ambient.Enabled,
+    Callback = function(enabled)
+        Settings.Lighting.Ambient.Enabled = enabled
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddColorPicker({
+    Name = "Ambient Color",
+    Flag = "AmbientColor",
+    Color = Settings.Lighting.Ambient.Color,
+    Callback = function(color)
+        Settings.Lighting.Ambient.Color = color
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddToggle({
+    Name = "Outdoor Ambient Enabled",
+    Flag = "OutdoorAmbientEnabled",
+    Value = Settings.Lighting.OutdoorAmbient.Enabled,
+    Callback = function(enabled)
+        Settings.Lighting.OutdoorAmbient.Enabled = enabled
+        UpdateLighting() 
+    end
+})
+
+LightingSec:AddColorPicker({
+    Name = "Outdoor Ambient Color",
+    Flag = "OutdoorAmbientColor",
+    Color = Settings.Lighting.OutdoorAmbient.Color,
+    Callback = function(color)
+        Settings.Lighting.OutdoorAmbient.Color = color
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddToggle({
+    Name = "Clock Time Enabled",
+    Flag = "ClockTimeEnabled",
+    Value = Settings.Lighting.ClockTime.Enabled,
+    Callback = function(enabled)
+        Settings.Lighting.ClockTime.Enabled = enabled
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddSlider({
+    Name = "Clock Time",
+    Flag = "ClockTime",
+    Value = Settings.Lighting.ClockTime.Time,
+    Min = 0,
+    Max = 24,
+    Rounding = 2,
+    Callback = function(value)
+        Settings.Lighting.ClockTime.Time = value
+        UpdateLighting()
+    end
+})
+
+Lighting:GetPropertyChangedSignal("Ambient"):Connect(function()
+    if Settings.Lighting.Ambient.Enabled then
+        Lighting.Ambient = Settings.Lighting.Ambient.Color
+    end
+end)
+
+Lighting:GetPropertyChangedSignal("OutdoorAmbient"):Connect(function()
+    if Settings.Lighting.OutdoorAmbient.Enabled then
+        Lighting.OutdoorAmbient = Settings.Lighting.OutdoorAmbient.Color
+    end
+end)
+
+Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function()
+    if Settings.Lighting.ClockTime.Enabled then
+        Lighting.ClockTime = Settings.Lighting.ClockTime.Time
+    end
+end)
 
 local ConfigGroup = Tabs.Configs:CreateSection({Name = "Configurations", Side = "Left"})
 
