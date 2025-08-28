@@ -492,29 +492,39 @@ local function isAlly(player)
     return helmet.BrickColor.Name == "Black" and Players.LocalPlayer.Team == Teams.Phantoms or helmet.BrickColor.Name ~= "Black" and Players.LocalPlayer.Team == Teams.Ghosts
 end
 
-local function getClosestPlayer(useFOV)
+local function getClosestPlayer(useFOV, hitPart)
     useFOV = useFOV == nil and Settings.SilentAim.UseFOV or useFOV
-    local closest, shortestDist = nil, math.huge
+    local closestPart, shortestDist = nil, math.huge
     local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
     for _, player in getPlayers() do
         if not player:IsDescendantOf(workspace.Ignore.DeadBody) then
             local ally = isAlly(player)
             if not (Settings.Chams.TeamCheck and ally) then
-                local part = getBodyPart(player, Settings.SilentAim.HitPart or Settings.Aimbot.HitPart)
-                if part then
-                    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                    if onScreen then
-                        local distToCenter = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                        local distToCam = (part.Position - Camera.CFrame.Position).Magnitude
-                        if not (Settings.Aimbot.MaxDistance.Enabled and distToCam > Settings.Aimbot.MaxDistance.Value) then
-                            if useFOV and Settings.FOV.Enabled then
-                                if distToCenter <= Settings.FOV.Radius then
+                local partsToCheck = (hitPart == "Closest Part") and {"Head", "Torso"} or {hitPart}
+                for _, partName in partsToCheck do
+                    local part = getBodyPart(player, partName)
+                    if part then
+                        local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                        if onScreen then
+                            local distToCenter = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                            local distToCam = (part.Position - Camera.CFrame.Position).Magnitude
+                            if not (Settings.Aimbot.MaxDistance.Enabled and distToCam > Settings.Aimbot.MaxDistance.Value) then
+                                if useFOV and Settings.FOV.Enabled then
+                                    if distToCenter <= Settings.FOV.Radius then
+                                        if distToCam <= 30 then return part end
+                                        if distToCenter < shortestDist then
+                                            closestPart = part
+                                            shortestDist = distToCenter
+                                        end
+                                    end
+                                else
                                     if distToCam <= 30 then return part end
-                                    if distToCenter < shortestDist then closest = part shortestDist = distToCenter end
+                                    if distToCenter < shortestDist then
+                                        closestPart = part
+                                        shortestDist = distToCenter
+                                    end
                                 end
-                            else
-                                if distToCam <= 30 then return part end
-                                if distToCenter < shortestDist then closest = part shortestDist = distToCenter end
                             end
                         end
                     end
@@ -522,7 +532,7 @@ local function getClosestPlayer(useFOV)
             end
         end
     end
-    return closest
+    return closestPart
 end
 
 local function safeMouseMoveRel(x, y) pcall(mousemoverel, x, y) end
@@ -551,7 +561,7 @@ local function aimAt()
     if not Settings.Aimbot.Easing.Strength or not State.TargetPart or not State.TargetPart:IsDescendantOf(workspace.Players) then return end
     if State.IsRightClickHeld then
         if Settings.Aimbot.AutoTargetSwitch and not State.TargetPart then
-            State.TargetPart = getClosestPlayer()
+            State.TargetPart = getClosestPlayer(nil, Settings.Aimbot.HitPart)
             if not State.TargetPart then State.IsRightClickHeld = false return end
         end
         local pos, onScreen = Camera:WorldToViewportPoint(State.TargetPart.Position)
@@ -600,7 +610,7 @@ local function initializeSilentAim()
     local OldNewBullet = BulletInterface.newBullet
     BulletInterface.newBullet = function(BulletData)
         if BulletData.extra and Settings.SilentAim.Enabled and math.random(1, 100) <= Settings.SilentAim.HitChance then
-            local HitPart = getClosestPlayer()
+            local HitPart = getClosestPlayer(Settings.SilentAim.UseFOV, Settings.SilentAim.HitPart)
             if HitPart and (not Settings.SilentAim.WallCheck or isVisible(HitPart, true)) then
                 local BulletSpeed = BulletData.extra.firearmObject:getWeaponStat("bulletspeed")
                 local VerticalDrop = SilentAimFunctions:CalculateBulletDrop(HitPart.Position, BulletData.position, BulletSpeed)
@@ -1645,15 +1655,17 @@ AimbotGroup:AddToggle({Name = "Enabled", Flag = "AimbotEnabled", Value = Setting
     Settings.Aimbot.Enabled = s
     if s then
         startMousePreload()
-        State.InputBeganConnection = UserInputService.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton2 then State.IsRightClickHeld = true State.TargetPart = getClosestPlayer() end end)
+        State.InputBeganConnection = UserInputService.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton2 then State.IsRightClickHeld = true State.TargetPart = getClosestPlayer(nil, Settings.Aimbot.HitPart) end end)
         State.InputEndedConnection = UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton2 then State.IsRightClickHeld = false State.TargetPart = nil end end)
         State.RenderSteppedConnection = RunService.RenderStepped:Connect(function() if State.IsRightClickHeld and State.TargetPart then if Settings.Aimbot.WallCheck then if isVisible(State.TargetPart, true) then aimAt() end else aimAt() end end end)
     else
         stopMousePreload()
-        if State.InputBeganConnection then State.InputBeganConnection:Disconnect() end if State.InputEndedConnection then State.InputEndedConnection:Disconnect() end if State.RenderSteppedConnection then State.RenderSteppedConnection:Disconnect() end
+        if State.InputBeganConnection then State.InputBeganConnection:Disconnect() end 
+        if State.InputEndedConnection then State.InputEndedConnection:Disconnect() end 
+        if State.RenderSteppedConnection then State.RenderSteppedConnection:Disconnect() end
     end
 end})
-AimbotGroup:AddDropdown({Name = "Hit Part", Flag = "AimbotHitPart", List = {"Head", "Torso"}, Value = Settings.Aimbot.HitPart, Callback = function(v) Settings.Aimbot.HitPart = v end})
+AimbotGroup:AddDropdown({Name = "Hit Part", Flag = "AimbotHitPart", List = {"Head", "Torso", "Closest Part"}, Value = Settings.Aimbot.HitPart, Callback = function(v) Settings.Aimbot.HitPart = v end})
 AimbotGroup:AddToggle({Name = "Wall Check", Flag = "AimbotWallCheck", Value = Settings.Aimbot.WallCheck, Callback = function(s) Settings.Aimbot.WallCheck = s end})
 AimbotGroup:AddToggle({Name = "Auto Target Switch", Flag = "AimbotAutoTargetSwitch", Value = Settings.Aimbot.AutoTargetSwitch, Callback = function(s) Settings.Aimbot.AutoTargetSwitch = s end})
 AimbotGroup:AddToggle({Name = "Use Max Distance", Flag = "AimbotMaxDistanceEnabled", Value = Settings.Aimbot.MaxDistance.Enabled, Callback = function(s) Settings.Aimbot.MaxDistance.Enabled = s end})
@@ -1662,7 +1674,7 @@ AimbotGroup:AddSlider({Name = "Strength", Flag = "AimbotEasingStrength", Value =
 
 local SilentAimGroup = Tabs.Main:CreateSection({Name = "Silent Aim"})
 SilentAimGroup:AddToggle({Name = "Enabled", Flag = "SilentAimEnabled", Value = Settings.SilentAim.Enabled, Callback = function(s) Settings.SilentAim.Enabled = s if s then initializeSilentAim() end end})
-SilentAimGroup:AddDropdown({Name = "Hit Part", Flag = "SilentAimHitPart", List = {"Head", "Torso"}, Value = Settings.SilentAim.HitPart, Callback = function(v) Settings.SilentAim.HitPart = v end})
+SilentAimGroup:AddDropdown({Name = "Hit Part", Flag = "SilentAimHitPart", List = {"Head", "Torso", "Closest Part"}, Value = Settings.SilentAim.HitPart, Callback = function(v) Settings.SilentAim.HitPart = v end})
 SilentAimGroup:AddSlider({Name = "Hit Chance", Flag = "SilentAimHitChance", Value = Settings.SilentAim.HitChance, Min = 0, Max = 100, Rounding = 0, Callback = function(v) Settings.SilentAim.HitChance = v end})
 SilentAimGroup:AddToggle({Name = "Use FOV", Flag = "SilentAimUseFOV", Value = Settings.SilentAim.UseFOV, Callback = function(s) Settings.SilentAim.UseFOV = s end})
 SilentAimGroup:AddToggle({Name = "Wall Check", Flag = "SilentAimWallCheck", Value = Settings.SilentAim.WallCheck, Callback = function(s) Settings.SilentAim.WallCheck = s end})
@@ -1733,7 +1745,7 @@ FOVGroup:AddColorPicker({Name = "Inline Color", Flag = "FOVFillColor", Color = S
 FOVGroup:AddSlider({Name = "Inline Transparency", Flag = "FOVFillTransparency", Value = Settings.FOV.FillTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.FOV.FillTransparency = v if Settings.FOV.Filled then Settings.FOV.Circle.Transparency = v end end})
 FOVGroup:AddColorPicker({Name = "Outline Color", Flag = "FOVOutlineColor", Color = Settings.FOV.OutlineColor, Transparency = Settings.FOV.OutlineTransparency, Callback = function(v) Settings.FOV.OutlineColor = v Settings.FOV.OutlineCircle.Color = v if not Settings.FOV.Filled then Settings.FOV.Circle.Color = v end end})
 FOVGroup:AddSlider({Name = "Outline Transparency", Flag = "FOVOutlineTransparency", Value = Settings.FOV.OutlineTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.FOV.OutlineTransparency = v Settings.FOV.OutlineCircle.Transparency = v if not Settings.FOV.Filled then Settings.FOV.Circle.Transparency = v end end})
-FOVGroup:AddSlider({Name = "FOV Radius", Flag = "FOVRadius", Value = Settings.FOV.Radius, Min = 50, Max = 1000, Rounding = 0, Callback = function(v) Settings.FOV.Radius = v Settings.FOV.Circle.Radius = v Settings.FOV.OutlineCircle.Radius = v end})
+FOVGroup:AddSlider({Name = "FOV Radius", Flag = "FOVRadius", Value = Settings.FOV.Radius, Min = 5, Max = 1000, Rounding = 0, Callback = function(v) Settings.FOV.Radius = v Settings.FOV.Circle.Radius = v Settings.FOV.OutlineCircle.Radius = v end})
 
 local ChamsGroup = Tabs.Visuals:CreateSection({Name = "Chams"})
 ChamsGroup:AddToggle({Name = "Enabled", Flag = "ChamsEnabled", Value = Settings.Chams.Enabled, Callback = function(s)
