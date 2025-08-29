@@ -1,4 +1,4 @@
--- // apologies for the messy code QwQ\\ --
+-- // apologies for the messy code QwQ (and special thanks to piuro for some amazing features)\\ --
 
 -- Library Imports
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bottomnoah/UI/refs/heads/main/cola.lua"))()
@@ -19,6 +19,7 @@ local Players = game:GetService("Players")
 local Camera = workspace.CurrentCamera
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local Lighting = cloneref(game:GetService("Lighting"));
 
 -- Module Cache
 local moduleCache
@@ -209,7 +210,7 @@ local Settings = {
         HitBoxes = {Enabled = false, HitPart = "Head", Size = 1.5}
     },
     GunMods = {
-        NoRecoil = false, 
+        NoRecoil = 0, 
         NoSpread = false, 
         NoSway = false, 
         NoWalkSway = false, 
@@ -218,7 +219,48 @@ local Settings = {
         InstantReload = false, 
         SmallCrosshair = false, 
         NoCrosshair = false
+    },
+    ViewModelChams = {
+        Arms = {
+            Enabled = false,
+            Color = Color3.fromRGB(255, 0, 0),
+            Material = "SmoothPlastic",
+            Transparency = 0
+        },
+        Weapons = {
+            Enabled = false,
+            Color = Color3.fromRGB(0, 0, 255),
+            Material = "SmoothPlastic",
+            Transparency = 0
+        },
+        Textures = {
+            Enabled = false,
+            Color = Color3.fromRGB(255, 255, 255),
+            Material = "SmoothPlastic",
+            Transparency = 0,
+            RemoveTextures = false
+        }
+    },
+    Lighting = {
+        Ambient = {
+            Enabled = false,
+            Color = Color3.fromRGB(255, 255, 255)
+        },
+        OutdoorAmbient = {
+            Enabled = false,
+            Color = Color3.fromRGB(255, 255, 255)
+        },
+        ClockTime = {
+            Enabled = false,
+            Time = 12
+        }
     }
+}
+
+local OriginalLightingProperties = {
+    Ambient = Lighting.Ambient,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
+    ClockTime = Lighting.ClockTime
 }
 
 local Configs = {
@@ -263,9 +305,20 @@ initializeCrosshair()
 
 -- FOV Setup
 local fov = Settings.FOV
-fov.Circle.Visible = false fov.Circle.Filled = fov.Filled fov.Circle.Color = fov.FillColor fov.Circle.Transparency = fov.FillTransparency fov.Circle.Thickness = 0 fov.Circle.Radius = fov.Radius fov.Circle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-Settings.Aimbot.Easing.Sensitivity.Value = Settings.Aimbot.Easing.Strength
-fov.OutlineCircle.Filled = false fov.OutlineCircle.Color = fov.OutlineColor fov.OutlineCircle.Transparency = fov.OutlineTransparency fov.OutlineCircle.Thickness = 1 fov.OutlineCircle.Radius = fov.Radius fov.OutlineCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2) fov.OutlineCircle.Visible = fov.Enabled
+fov.Circle.Visible = fov.Enabled
+fov.Circle.Filled = fov.Filled
+fov.Circle.Color = fov.Filled and fov.FillColor or fov.OutlineColor
+fov.Circle.Transparency = fov.Filled and fov.FillTransparency or fov.OutlineTransparency
+fov.Circle.Thickness = fov.Filled and 0 or 1
+fov.Circle.Radius = fov.Radius
+fov.Circle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+fov.OutlineCircle.Filled = false
+fov.OutlineCircle.Color = fov.OutlineColor
+fov.OutlineCircle.Transparency = fov.OutlineTransparency
+fov.OutlineCircle.Thickness = 1
+fov.OutlineCircle.Radius = fov.Radius
+fov.OutlineCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+fov.OutlineCircle.Visible = fov.Enabled
 
 -- State
 local State = {
@@ -286,51 +339,30 @@ local ConfigListDropdown
 -- Utilities
 local function refreshConfigList()
     Configs.Files = {}
-    
-    if not isfolder(Configs.Path) then
-        makefolder(Configs.Path)
-    end
-    
+    if not isfolder(Configs.Path) then makefolder(Configs.Path) end
     for _, file in pairs(listfiles(Configs.Path)) do
         local fileName = file:match("([^/\\]+)$")
         if fileName and fileName:lower():match("%.json$") then
             local configName = fileName:match("(.+)%.json$")
-            if configName then
-                table.insert(Configs.Files, configName)
-            end
+            if configName then table.insert(Configs.Files, configName) end
         end
     end
-    
     table.sort(Configs.Files)
-    
     if ConfigListDropdown then
         local listToUse = #Configs.Files > 0 and Configs.Files or {"None"}
-        
-        pcall(function()
-            ConfigListDropdown:Clear()
-        end)
-        
+        pcall(function() ConfigListDropdown:Clear() end)
         for _, config in ipairs(listToUse) do
-            pcall(function()
-                ConfigListDropdown:Add(config)
-            end)
+            pcall(function() ConfigListDropdown:Add(config) end)
         end
-        
         if #Configs.Files > 0 then
             if table.find(Configs.Files, Configs.Current) then
-                pcall(function()
-                    ConfigListDropdown:Set(Configs.Current)
-                end)
+                pcall(function() ConfigListDropdown:Set(Configs.Current) end)
             else
-                pcall(function()
-                    ConfigListDropdown:Set(Configs.Files[1])
-                end)
+                pcall(function() ConfigListDropdown:Set(Configs.Files[1]) end)
             end
         else
             Configs.Current = ""
-            pcall(function()
-                ConfigListDropdown:Set("None")
-            end)
+            pcall(function() ConfigListDropdown:Set("None") end)
         end
     end
 end
@@ -341,28 +373,31 @@ local function saveConfig(name)
         Library:Notify({Text = "Please enter a valid config name"})
         return
     end
-    
-    if not isfolder(Configs.Path) then
-        makefolder(Configs.Path)
-    end
-    
+    if not isfolder(Configs.Path) then makefolder(Configs.Path) end
     local configData = {}
     local function serializeTable(t, prefix)
-        for k, v in pairs(t) do
-            local fullKey = prefix and prefix .. "." .. k or k
-            if type(v) == "table" then
-                serializeTable(v, fullKey)
+    for k, v in pairs(t) do
+        local fullKey = prefix and prefix .. "." .. k or k
+        if type(v) == "table" then
+            serializeTable(v, fullKey)
+        elseif type(v) == "userdata" then
+            if typeof(v) == "NumberValue" then
+                configData[fullKey] = v.Value
+            elseif typeof(v) == "Color3" then
+                configData[fullKey] = {R = v.R, G = v.G, B = v.B}
+            elseif typeof(v) == "EnumItem" and v.EnumType == Enum.Material then
+                configData[fullKey] = v.Name
             else
-                configData[fullKey] = v
+                configData[fullKey] = tostring(v)
             end
+        else
+            configData[fullKey] = v
         end
     end
-    
+end
     serializeTable(Settings)
     writefile(Configs.Path .. name .. ".json", game:GetService("HttpService"):JSONEncode(configData))
-    
     Configs.Current = name
-    
     refreshConfigList()
     Library:Notify({Text = "Config saved: " .. name})
 end
@@ -373,24 +408,15 @@ local function deleteConfig(name)
         Library:Notify({Text = "Please select a valid config to delete"})
         return
     end
-    
     if not isfolder(Configs.Path) or not isfile(Configs.Path .. name .. ".json") then
         Library:Notify({Text = "Config not found: " .. name})
         return
     end
-    
     delfile(Configs.Path .. name .. ".json")
-    
-    if Configs.Current == name then
-        Configs.Current = ""
-    end
-    
+    if Configs.Current == name then Configs.Current = "" end
     refreshConfigList()
     Library:Notify({Text = "Config deleted: " .. name})
-    
-    if ConfigNameTextbox and Configs.Current == "" then
-        ConfigNameTextbox:Set("")
-    end
+    if ConfigNameTextbox and Configs.Current == "" then ConfigNameTextbox:Set("") end
 end
 
 local function raycast(origin, direction, filterlist)
@@ -399,45 +425,42 @@ local function raycast(origin, direction, filterlist)
     return result and result.Instance, result and result.Position
 end
 
-local function getGunBarrel()
-    local furthestPart, maxZ = nil, -math.huge
-    for _, model in Camera:GetChildren() do
-        if model:IsA("Model") and not model.Name:lower():find("arm") then
-            for _, part in model:GetDescendants() do
-                if part:IsA("BasePart") or part:IsA("MeshPart") then
-                    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                    if onScreen and pos.Z > maxZ then maxZ = pos.Z furthestPart = part end
-                end
-            end
-        end
-    end
-    return furthestPart
+local function getBarrelLocation()
+    local controller = weaponInterface.getActiveWeaponController()
+    local weapon = controller and controller:getActiveWeapon()
+    return weapon and not weapon._aiming and weapon._barrelPart and Camera:WorldToViewportPoint(weapon._barrelPart.CFrame * Vector3.new(0, 0, -100))
 end
 
 local function updateFOVCirclePosition()
     local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
     if Settings.FOV.Enabled then
         if Settings.FOV.FollowGun then
-            local barrel = getGunBarrel()
-            if barrel then
-                local pos, onScreen = Camera:WorldToViewportPoint(barrel.Position)
+            local barrelPos = getBarrelLocation()
+            if barrelPos then
+                local pos, onScreen = barrelPos, true
                 if onScreen then
                     if State.IsRightClickHeld and math.abs(pos.X - center.X) <= 10 then
-                        fov.Circle.Position = center fov.OutlineCircle.Position = center
+                        fov.Circle.Position = center
+                        fov.OutlineCircle.Position = center
                     else
-                        fov.Circle.Position = Vector2.new(pos.X, pos.Y) fov.OutlineCircle.Position = Vector2.new(pos.X, pos.Y)
+                        fov.Circle.Position = Vector2.new(pos.X, pos.Y)
+                        fov.OutlineCircle.Position = Vector2.new(pos.X, pos.Y)
                     end
                 else
-                    fov.Circle.Position = center fov.OutlineCircle.Position = center
+                    fov.Circle.Position = center
+                    fov.OutlineCircle.Position = center
                 end
             else
-                fov.Circle.Position = center fov.OutlineCircle.Position = center
+                fov.Circle.Position = center
+                fov.OutlineCircle.Position = center
             end
         else
-            fov.Circle.Position = center fov.OutlineCircle.Position = center
+            fov.Circle.Position = center
+            fov.OutlineCircle.Position = center
         end
     else
-        fov.Circle.Position = center fov.OutlineCircle.Position = center
+        fov.Circle.Position = center
+        fov.OutlineCircle.Position = center
     end
 end
 
@@ -1026,6 +1049,139 @@ screenCull.step = function(...)
     end
 end
 
+local gunTexFolder = Instance.new("Folder", game.CoreGui)
+gunTexFolder.Name = "guntex"
+
+State.ViewmodelProperties = {}
+
+local function updateViewModelChams()
+    for _, model in ipairs(workspace.Camera:GetChildren()) do
+        if model:IsA("Model") then
+        end
+    end
+    local armsModels = {}
+    local weaponModels = {}
+    for _, model in ipairs(workspace.Camera:GetChildren()) do
+        if not model:IsA("Model") then continue end
+        local isArmModel = false
+        for _, descendant in ipairs(model:GetDescendants()) do
+            local name = descendant.Name:lower()
+            if string.find(name, "arm") or string.find(name, "sleeve") or string.find(name, "hand") then
+                isArmModel = true
+                break
+            end
+        end
+        
+        if isArmModel then
+            table.insert(armsModels, model)
+        else
+            table.insert(weaponModels, model)
+        end
+    end
+    
+    for _, armModel in ipairs(armsModels) do
+        for _, part in ipairs(armModel:GetDescendants()) do
+            if not (part:IsA("BasePart") or part:IsA("MeshPart")) then continue end
+            if not State.ViewmodelProperties[part] then
+                State.ViewmodelProperties[part] = {
+                    Transparency = part.Transparency,
+                    Material = part.Material,
+                    Color = part.Color,
+                    Blacklisted = part.Transparency > 0.9,
+                    Textures = {}
+                }
+                for _, c in ipairs(part:GetChildren()) do
+                    if c:IsA("Texture") or c:IsA("Decal") then
+                        table.insert(State.ViewmodelProperties[part].Textures, c)
+                    end
+                end
+            end
+            local props = State.ViewmodelProperties[part]
+            if Settings.ViewModelChams.Arms.Enabled and not props.Blacklisted then
+                part.Material = Settings.ViewModelChams.Arms.Material
+                part.Color = Settings.ViewModelChams.Arms.Color
+                part.Transparency = Settings.ViewModelChams.Arms.Transparency
+            else
+                part.Material = props.Material
+                part.Color = props.Color
+                part.Transparency = props.Transparency
+            end
+            for _, tx in ipairs(props.Textures) do
+                if Settings.ViewModelChams.Textures.RemoveTextures then
+                    if tx.Parent == part then tx.Parent = gunTexFolder end
+                else
+                    if tx.Parent == gunTexFolder then tx.Parent = part end
+                    if Settings.ViewModelChams.Textures.Enabled then
+                        pcall(function()
+                            if tx:IsA("Texture") then
+                                tx.Color3 = Settings.ViewModelChams.Textures.Color
+                                tx.Transparency = Settings.ViewModelChams.Textures.Transparency
+                                if tx:FindFirstChild("MaterialVariant") then
+                                    tx.MaterialVariant.Value = tostring(Settings.ViewModelChams.Textures.Material)
+                                end
+                            elseif tx:IsA("Decal") then
+                                tx.Color3 = Settings.ViewModelChams.Textures.Color
+                                tx.Transparency = Settings.ViewModelChams.Textures.Transparency
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+
+    for _, weaponModel in ipairs(weaponModels) do
+        for _, part in ipairs(weaponModel:GetDescendants()) do
+            if not (part:IsA("BasePart") or part:IsA("MeshPart")) then continue end
+            if not State.ViewmodelProperties[part] then
+                State.ViewmodelProperties[part] = {
+                    Transparency = part.Transparency,
+                    Material = part.Material,
+                    Color = part.Color,
+                    Blacklisted = part.Transparency > 0.9,
+                    Textures = {}
+                }
+                for _, c in ipairs(part:GetChildren()) do
+                    if c:IsA("Texture") or c:IsA("Decal") then
+                        table.insert(State.ViewmodelProperties[part].Textures, c)
+                    end
+                end
+            end
+            local props = State.ViewmodelProperties[part]
+            if Settings.ViewModelChams.Weapons.Enabled and not props.Blacklisted then
+                part.Material = Settings.ViewModelChams.Weapons.Material
+                part.Color = Settings.ViewModelChams.Weapons.Color
+                part.Transparency = Settings.ViewModelChams.Weapons.Transparency
+            else
+                part.Material = props.Material
+                part.Color = props.Color
+                part.Transparency = props.Transparency
+            end
+            for _, tx in ipairs(props.Textures) do
+                if Settings.ViewModelChams.Textures.RemoveTextures then
+                    if tx.Parent == part then tx.Parent = gunTexFolder end
+                else
+                    if tx.Parent == gunTexFolder then tx.Parent = part end
+                    if Settings.ViewModelChams.Textures.Enabled then
+                        pcall(function()
+                            if tx:IsA("Texture") then
+                                tx.Color3 = Settings.ViewModelChams.Textures.Color
+                                tx.Transparency = Settings.ViewModelChams.Textures.Transparency
+                                if tx:FindFirstChild("MaterialVariant") then
+                                    tx.MaterialVariant.Value = tostring(Settings.ViewModelChams.Textures.Material)
+                                end
+                            elseif tx:IsA("Decal") then
+                                tx.Color3 = Settings.ViewModelChams.Textures.Color
+                                tx.Transparency = Settings.ViewModelChams.Textures.Transparency
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end
+
 local lastPos, deltaTime = nil, 0
 local objectChamUncache
 RunService.Heartbeat:Connect(function(ndt)
@@ -1069,6 +1225,8 @@ RunService.Heartbeat:Connect(function(ndt)
         elseif not started and currentObj then
             fakeRepObject:despawn() currentObj:Destroy() currentObj = nil lastPos = nil
         end
+    else
+        updateViewModelChams()
     end
 end)
 
@@ -1082,8 +1240,19 @@ local newSpawnCache = {currentAddition = 0, latency = 0, updateDebt = 0, spawnTi
 
 local originalApplyImpulse = recoil.applyImpulse
 function recoil.applyImpulse(...)
-    if Settings.GunMods.NoRecoil then return end
-    return originalApplyImpulse(...)
+    local args = {...}
+    local self = args[1]
+    local arg2 = args[2]
+    local originalMultiplier = args[3] or 1
+
+    local reductionPercentage = Settings.GunMods.NoRecoil or 0
+    
+    if reductionPercentage >= 100 then
+        return
+    end
+    local newMultiplier = originalMultiplier * (1 - (reductionPercentage / 100))
+
+    return originalApplyImpulse(self, arg2, newMultiplier)
 end
 
 local originalReload = firearmObject.reload
@@ -1280,27 +1449,41 @@ callbackList["Player%%WalkSpeedValue"] = function(value)
     end
 end
 
+local function UpdateLighting()
+    if Settings.Lighting.Ambient.Enabled then
+        Lighting.Ambient = Settings.Lighting.Ambient.Color
+    else
+        Lighting.Ambient = OriginalLightingProperties.Ambient
+    end
+    if Settings.Lighting.OutdoorAmbient.Enabled then
+        Lighting.OutdoorAmbient = Settings.Lighting.OutdoorAmbient.Color
+    else
+        Lighting.OutdoorAmbient = OriginalLightingProperties.OutdoorAmbient
+    end
+    if Settings.Lighting.ClockTime.Enabled then
+        Lighting.ClockTime = Settings.Lighting.ClockTime.Time
+    else
+        Lighting.ClockTime = OriginalLightingProperties.ClockTime
+    end
+end
 
 local function loadConfig(name)
     if not name or name == "" or name == "None" then
         Library:Notify({Text = "Please select a valid config"})
         return
     end
-    
     if not isfolder(Configs.Path) or not isfile(Configs.Path .. name .. ".json") then
         Library:Notify({Text = "Config not found: " .. name})
         return
     end
-    
     local success, configData = pcall(function()
         return game:GetService("HttpService"):JSONDecode(readfile(Configs.Path .. name .. ".json"))
     end)
-    
     if not success then
         Library:Notify({Text = "Failed to load config: " .. name})
         return
     end
-    
+
     local function applyConfigData(data, targetTable)
         for k, v in pairs(data) do
             local keys = {}
@@ -1312,28 +1495,24 @@ local function loadConfig(name)
                 current = current[keys[i]]
                 if not current then return end
             end
-            current[keys[#keys]] = v
+            local targetKey = keys[#keys]
+            if current[targetKey] and type(current[targetKey]) == "userdata" then
+                if typeof(current[targetKey]) == "NumberValue" then
+                    current[targetKey].Value = v
+                elseif typeof(current[targetKey]) == "Color3" and type(v) == "table" then
+                    current[targetKey] = Color3.new(v.R, v.G, v.B)
+                elseif typeof(current[targetKey]) == "EnumItem" and current[targetKey].EnumType == Enum.Material then
+                    current[targetKey] = Enum.Material[v] or current[targetKey]
+                end
+            else
+                current[targetKey] = v
+            end
         end
     end
-    
+
     applyConfigData(configData, Settings)
-    
-    if configData["Aimbot.Enabled"] ~= nil then
-        Library.Flags["AimbotEnabled"] = configData["Aimbot.Enabled"]
-        if configData["Aimbot.Enabled"] then
-            startMousePreload()
-            State.InputBeganConnection = UserInputService.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton2 then State.IsRightClickHeld = true State.TargetPart = getClosestPlayer() end end)
-            State.InputEndedConnection = UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton2 then State.IsRightClickHeld = false State.TargetPart = nil end end)
-            State.RenderSteppedConnection = RunService.RenderStepped:Connect(function() if State.IsRightClickHeld and State.TargetPart then if Settings.Aimbot.WallCheck then if isVisible(State.TargetPart, true) then aimAt() end else aimAt() end end end)
-        else
-            stopMousePreload()
-            if State.InputBeganConnection then State.InputBeganConnection:Disconnect() end 
-            if State.InputEndedConnection then State.InputEndedConnection:Disconnect() end 
-            if State.RenderSteppedConnection then State.RenderSteppedConnection:Disconnect() end
-        end
-    end
-    
-    local flagMappings = {
+
+    for settingPath, flagName in pairs({
         ["Aimbot.Enabled"] = "AimbotEnabled",
         ["Aimbot.HitPart"] = "AimbotHitPart",
         ["Aimbot.WallCheck"] = "AimbotWallCheck",
@@ -1341,13 +1520,11 @@ local function loadConfig(name)
         ["Aimbot.MaxDistance.Enabled"] = "AimbotMaxDistanceEnabled",
         ["Aimbot.MaxDistance.Value"] = "AimbotMaxDistance",
         ["Aimbot.Easing.Strength"] = "AimbotEasingStrength",
-        
         ["SilentAim.Enabled"] = "SilentAimEnabled",
         ["SilentAim.HitPart"] = "SilentAimHitPart",
         ["SilentAim.UseFOV"] = "SilentAimUseFOV",
         ["SilentAim.WallCheck"] = "SilentAimWallCheck",
         ["SilentAim.HitChance"] = "SilentAimHitChance",
-        
         ["ESP.Enabled"] = "ESPEnabled",
         ["ESP.Features.Box.Enabled"] = "ESPBox",
         ["ESP.Features.Tracer.Enabled"] = "ESPTracer",
@@ -1358,7 +1535,6 @@ local function loadConfig(name)
         ["ESP.VisibilityCheck"] = "ESPVisibilityCheck",
         ["ESP.MaxDistance.Enabled"] = "ESPMaxDistanceEnabled",
         ["ESP.MaxDistance.Value"] = "ESPMaxDistance",
-        
         ["ESP.Features.Box.Color"] = "ESPBoxColor",
         ["ESP.Features.Tracer.Color"] = "ESPTracerColor",
         ["ESP.Features.DistanceText.Color"] = "ESPDistanceColor",
@@ -1369,7 +1545,6 @@ local function loadConfig(name)
         ["ESP.Features.HealthBar.Width"] = "ESPHealthBarWidth",
         ["ESP.Features.HealthBar.Height"] = "ESPHealthBarHeight",
         ["ESP.Features.HealthBar.OutlineColor"] = "ESPHealthBarOutlineColor",
-        
         ["FOV.Enabled"] = "FOVEnabled",
         ["FOV.FollowGun"] = "FOVFollowGun",
         ["FOV.Filled"] = "FOVFilled",
@@ -1378,13 +1553,11 @@ local function loadConfig(name)
         ["FOV.OutlineColor"] = "FOVOutlineColor",
         ["FOV.OutlineTransparency"] = "FOVOutlineTransparency",
         ["FOV.Radius"] = "FOVRadius",
-        
         ["Chams.Enabled"] = "ChamsEnabled",
         ["Chams.Fill.Color"] = "ChamsFillColor",
         ["Chams.Outline.Color"] = "ChamsOutlineColor",
         ["Chams.Fill.Transparency"] = "ChamsFillTransparency",
         ["Chams.Outline.Transparency"] = "ChamsOutlineTransparency",
-        
         ["GunMods.NoRecoil"] = "NoRecoil",
         ["GunMods.NoSpread"] = "NoSpread",
         ["GunMods.NoSway"] = "NoSway",
@@ -1394,7 +1567,6 @@ local function loadConfig(name)
         ["GunMods.NoCameraBob"] = "NoCameraBob",
         ["GunMods.SmallCrosshair"] = "SmallCrosshair",
         ["GunMods.NoCrosshair"] = "NoCrosshair",
-        
         ["ThirdPerson.Enabled"] = "ThirdPersonEnabled",
         ["ThirdPerson.ShowCharacter"] = "ThirdPersonShowCharacter",
         ["ThirdPerson.ShowCharacterWhileAiming"] = "ThirdPersonShowCharacterWhileAiming",
@@ -1403,13 +1575,11 @@ local function loadConfig(name)
         ["ThirdPerson.CameraOffsetX"] = "ThirdPersonCameraOffsetX",
         ["ThirdPerson.CameraOffsetY"] = "ThirdPersonCameraOffsetY",
         ["ThirdPerson.CameraOffsetZ"] = "ThirdPersonCameraOffsetZ",
-        
         ["Player.Bhop.Enabled"] = "BhopEnabled",
         ["Player.WalkSpeed.Enabled"] = "WalkSpeedEnabled",
         ["Player.WalkSpeed.Value"] = "WalkSpeedValue",
         ["Player.JumpPower.Enabled"] = "JumpPowerEnabled",
         ["Player.JumpPower.Value"] = "JumpPowerValue",
-        
         ["AntiAim.Enabled"] = "AntiAimEnabled",
         ["AntiAim.Mode"] = "AntiAimMode",
         ["AntiAim.SpinSpeed"] = "AntiAimSpinSpeed",
@@ -1417,7 +1587,6 @@ local function loadConfig(name)
         ["AntiAim.StaticAngle"] = "AntiAimStaticAngle",
         ["AntiAim.PitchMode"] = "AntiAimPitchMode",
         ["AntiAim.PitchAngle"] = "AntiAimPitchAngle",
-        
         ["Crosshair.Enabled"] = "CrosshairEnabled",
         ["Crosshair.TStyle"] = "CrosshairStyle",
         ["Crosshair.Dot"] = "CrosshairDot",
@@ -1426,25 +1595,85 @@ local function loadConfig(name)
         ["Crosshair.Gap"] = "CrosshairGap",
         ["Crosshair.Color"] = "CrosshairColor",
         ["Crosshair.Transparency"] = "CrosshairTransparency",
-        
         ["Misc.Textures"] = "MiscTextures",
-        ["Misc.VotekickRejoiner"] = "VotekickRejoiner"
-    }
-    
-    for settingPath, flagName in pairs(flagMappings) do
-        if configData[settingPath] ~= nil then
-            Library.Flags[flagName] = configData[settingPath]
+        ["Misc.VotekickRejoiner"] = "VotekickRejoiner",
+        ["ViewModelChams.Arms.Enabled"] = "ViewModelChamsArmsEnabled",
+        ["ViewModelChams.Arms.Color"] = "ViewModelChamsArmsColor",
+        ["ViewModelChams.Arms.Material"] = "ViewModelChamsArmsMaterial",
+        ["ViewModelChams.Arms.Transparency"] = "ViewModelChamsArmsTransparency",
+        ["ViewModelChams.Weapons.Enabled"] = "ViewModelChamsWeaponsEnabled",
+        ["ViewModelChams.Weapons.Color"] = "ViewModelChamsWeaponsColor",
+        ["ViewModelChams.Weapons.Material"] = "ViewModelChamsWeaponsMaterial",
+        ["ViewModelChams.Weapons.Transparency"] = "ViewModelChamsWeaponsTransparency",
+        ["ViewModelChams.Textures.Enabled"] = "ViewModelChamsTexturesEnabled",
+        ["ViewModelChams.Textures.Color"] = "ViewModelChamsTexturesColor",
+        ["ViewModelChams.Textures.Material"] = "ViewModelChamsTexturesMaterial",
+        ["ViewModelChams.Textures.Transparency"] = "ViewModelChamsTexturesTransparency",
+        ["ViewModelChams.Textures.RemoveTextures"] = "ViewModelChamsTexturesRemove",
+        ["Lighting.Ambient.Enabled"] = "AmbientEnabled",
+        ["Lighting.Ambient.Color"] = "AmbientColor",
+        ["Lighting.OutdoorAmbient.Enabled"] = "OutdoorAmbientEnabled",
+        ["Lighting.OutdoorAmbient.Color"] = "OutdoorAmbientColor",
+        ["Lighting.ClockTime.Enabled"] = "ClockTimeEnabled",
+        ["Lighting.ClockTime.Time"] = "ClockTime"
+    }) do
+        local value = configData[settingPath]
+        if value ~= nil then
+            if type(value) == "table" and value.R and value.G and value.B then
+                Library.Flags[flagName] = Color3.new(value.R, value.G, value.B)
+            else
+                Library.Flags[flagName] = value
+            end
         end
     end
-        
-    if configData["SilentAim.Enabled"] and configData["SilentAim.Enabled"] then
-        initializeSilentAim()
-    end
-    
-    if configData["SilentAim.HitChance"] then
-        Settings.SilentAim.HitChance = configData["SilentAim.HitChance"]
+
+    local function initializeAimbot()
+        stopMousePreload()
+        if State.InputBeganConnection then State.InputBeganConnection:Disconnect() State.InputBeganConnection = nil end
+        if State.InputEndedConnection then State.InputEndedConnection:Disconnect() State.InputEndedConnection = nil end
+        if State.RenderSteppedConnection then State.RenderSteppedConnection:Disconnect() State.RenderSteppedConnection = nil end
+        State.IsRightClickHeld = false
+        State.TargetPart = nil
+
+        if Settings.Aimbot.Enabled then
+            startMousePreload()
+            State.InputBeganConnection = UserInputService.InputBegan:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton2 then
+                    State.IsRightClickHeld = true
+                    State.TargetPart = getClosestPlayer(nil, Settings.Aimbot.HitPart)
+                end
+            end)
+            State.InputEndedConnection = UserInputService.InputEnded:Connect(function(i)
+                if i.UserInputType == Enum.UserInputType.MouseButton2 then
+                    State.IsRightClickHeld = false
+                    State.TargetPart = nil
+                end
+            end)
+            State.RenderSteppedConnection = RunService.RenderStepped:Connect(function()
+                if State.IsRightClickHeld and State.TargetPart then
+                    if Settings.Aimbot.WallCheck then
+                        if isVisible(State.TargetPart, true) then aimAt() end
+                    else
+                        aimAt()
+                    end
+                end
+            end)
+        end
     end
 
+    if configData["Aimbot.Enabled"] ~= nil then
+        initializeAimbot()
+    end
+    if configData["Aimbot.Easing.Strength"] then
+        updateSensitivity(configData["Aimbot.Easing.Strength"])
+    end
+    if configData["SilentAim.Enabled"] ~= nil then
+        if configData["SilentAim.Enabled"] then
+            initializeSilentAim()
+        else
+            cleanupSilentAim()
+        end
+    end
     if configData["ESP.Enabled"] ~= nil then
         if configData["ESP.Enabled"] then
             initializeESP()
@@ -1459,19 +1688,44 @@ local function loadConfig(name)
                 end
             end)
         else
-            if State.PlayerCacheUpdate then State.PlayerCacheUpdate:Disconnect() end
-            if State.ESPLoop then State.ESPLoop:Disconnect() end
+            if State.PlayerCacheUpdate then State.PlayerCacheUpdate:Disconnect() State.PlayerCacheUpdate = nil end
+            if State.ESPLoop then State.ESPLoop:Disconnect() State.ESPLoop = nil end
             for p in State.Storage.ESPCache do uncacheObject(p) end
             State.PlayersToDraw = {}
             State.CachedProperties = {}
         end
     end
-    
     if configData["FOV.Enabled"] ~= nil then
         Settings.FOV.Circle.Visible = configData["FOV.Enabled"]
         Settings.FOV.OutlineCircle.Visible = configData["FOV.Enabled"]
     end
+    if configData["FOV.Filled"] ~= nil then
+        Settings.FOV.Filled = configData["FOV.Filled"]
+        Settings.FOV.Circle.Filled = Settings.FOV.Filled
+        Settings.FOV.Circle.Color = Settings.FOV.Filled and Settings.FOV.FillColor or Settings.FOV.OutlineColor
+        Settings.FOV.Circle.Transparency = Settings.FOV.Filled and Settings.FOV.FillTransparency or Settings.FOV.OutlineTransparency
+        Settings.FOV.Circle.Thickness = Settings.FOV.Filled and 0 or 1
+        Settings.FOV.Circle.Visible = Settings.FOV.Enabled
+    end
     
+    if configData["FOV.OutlineColor"] ~= nil then
+        local color = Color3.new(configData["FOV.OutlineColor"].R, configData["FOV.OutlineColor"].G, configData["FOV.OutlineColor"].B)
+        Settings.FOV.OutlineColor = color
+        Settings.FOV.OutlineCircle.Color = color
+        Library.Flags["FOVOutlineColor"] = color
+        if not Settings.FOV.Filled then
+            Settings.FOV.Circle.Color = color
+        end
+    end
+    if configData["FOV.OutlineTransparency"] ~= nil then
+        Settings.FOV.OutlineTransparency = configData["FOV.OutlineTransparency"]
+        Settings.FOV.OutlineCircle.Transparency = configData["FOV.OutlineTransparency"]
+        Library.Flags["FOVOutlineTransparency"] = configData["FOV.OutlineTransparency"]
+        if not Settings.FOV.Filled then
+            Settings.FOV.Circle.Transparency = configData["FOV.OutlineTransparency"]
+        end
+    end
+
     if configData["Chams.Enabled"] ~= nil then
         if configData["Chams.Enabled"] then
             State.ChamsUpdateConnection = RunService.RenderStepped:Connect(updateChams)
@@ -1480,16 +1734,12 @@ local function loadConfig(name)
                 State.ChamsUpdateConnection:Disconnect()
                 State.ChamsUpdateConnection = nil
             end
-            for p in State.Highlights do
-                removeHighlight(p)
-            end
+            for p in State.Highlights do removeHighlight(p) end
         end
     end
-    
     if configData["Crosshair.Enabled"] ~= nil then
         toggleCrosshair(configData["Crosshair.Enabled"])
     end
-    
     if configData["ThirdPerson.Enabled"] ~= nil then
         if charInterface.isAlive() and configData["ThirdPerson.ShowCharacter"] then
             if configData["ThirdPerson.Enabled"] then
@@ -1504,11 +1754,9 @@ local function loadConfig(name)
             end
         end
     end
-    
     if configData["Player.WalkSpeed.Enabled"] ~= nil then
         callbackList["Player%%WalkSpeed"](configData["Player.WalkSpeed.Enabled"])
     end
-    
     if configData["AntiAim.Enabled"] ~= nil then
         startTime = os.clock()
         lastFrameTime = nil
@@ -1532,29 +1780,17 @@ local function loadConfig(name)
             end
         end
     end
-    
     if configData["Misc.Textures"] ~= nil then
-        if configData["Misc.Textures"] then
-            optimizeMap()
-        else
-            revertMap()
-        end
+        if configData["Misc.Textures"] then optimizeMap() else revertMap() end
     end
-    
     if configData["Misc.VotekickRejoiner"] and configData["Misc.VotekickRejoiner"] then
         initializeVotekickRejoiner()
     end
-    
-    if configData["Aimbot.Easing.Strength"] then
-        updateSensitivity(configData["Aimbot.Easing.Strength"])
-    end
-    
+    UpdateLighting()
+
     Library:Notify({Text = "Config loaded: " .. name})
     Configs.Current = name
-    
-    if ConfigNameTextbox then
-        ConfigNameTextbox:Set(name)
-    end
+    if ConfigNameTextbox then ConfigNameTextbox:Set(name) end
 end
 
 -- UI
@@ -1562,7 +1798,18 @@ local Window = Library:CreateWindow({Name = "Astralis", Themeable = {Info = "dsc
 local Tabs = {Main = Window:CreateTab({Name = "Main"}), Mods = Window:CreateTab({Name = "Mods"}), Visuals = Window:CreateTab({Name = "Visuals"}), Player = Window:CreateTab({Name = "Player"}), Misc = Window:CreateTab({Name = "Misc"}), Configs = Window:CreateTab({Name = "Configs"})}
 
 local GunModsGroup = Tabs.Mods:CreateSection({Name = "Gun Modifications"})
-GunModsGroup:AddToggle({Name = "No Recoil", Flag = "NoRecoil", Value = Settings.GunMods.NoRecoil, Callback = function(s) Settings.GunMods.NoRecoil = s end})
+GunModsGroup:AddSlider({
+    Name = "Recoil Reduction %",
+    Flag = "NoRecoil",
+    Value = 0,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v)
+        Settings.GunMods.NoRecoil = v
+    end
+})
+
 GunModsGroup:AddToggle({Name = "No Spread", Flag = "NoSpread", Value = Settings.GunMods.NoSpread, Callback = function(s) Settings.GunMods.NoSpread = s end})
 GunModsGroup:AddToggle({Name = "No Gun Sway", Flag = "NoSway", Value = Settings.GunMods.NoSway, Callback = function(s) Settings.GunMods.NoSway = s end})
 GunModsGroup:AddToggle({Name = "No Sniper Scope", Flag = "NoSniperScope", Value = Settings.GunMods.NoSniperScope, Callback = function(s) Settings.GunMods.NoSniperScope = s end})
@@ -1740,7 +1987,7 @@ DistanceCustomization:AddSlider({Name = "Max Distance", Flag = "ESPMaxDistance",
 local FOVGroup = Tabs.Main:CreateSection({Name = "FOV", Side = "Right"})
 FOVGroup:AddToggle({Name = "Show FOV Circle", Flag = "FOVEnabled", Value = Settings.FOV.Enabled, Callback = function(s) Settings.FOV.Enabled = s Settings.FOV.Circle.Visible = s Settings.FOV.OutlineCircle.Visible = s end})
 FOVGroup:AddToggle({Name = "Follow Gun", Flag = "FOVFollowGun", Value = Settings.FOV.FollowGun, Callback = function(s) Settings.FOV.FollowGun = s end})
-FOVGroup:AddToggle({Name = "Fill FOV Circle", Flag = "FOVFilled", Value = Settings.FOV.Filled, Callback = function(s) Settings.FOV.Filled = s Settings.FOV.Circle.Filled = s Settings.FOV.Circle.Color = s and Settings.FOV.FillColor or Settings.FOV.OutlineColor Settings.FOV.Circle.Transparency = s and Settings.FOV.FillTransparency or Settings.FOV.OutlineTransparency Settings.FOV.Circle.Thickness = s and 0 or 1 end})
+FOVGroup:AddToggle({Name = "Fill FOV Circle", Flag = "FOVFilled", Value = Settings.FOV.Filled, Callback = function(s) Settings.FOV.Filled = s Settings.FOV.Circle.Filled = s Settings.FOV.Circle.Color = s and Settings.FOV.FillColor or Settings.FOV.OutlineColor Settings.FOV.Circle.Transparency = s and Settings.FOV.FillTransparency or Settings.FOV.OutlineTransparency Settings.FOV.Circle.Thickness = s and 0 or 1 if Settings.FOV.Enabled then Settings.FOV.Circle.Visible = true end end})
 FOVGroup:AddColorPicker({Name = "Inline Color", Flag = "FOVFillColor", Color = Settings.FOV.FillColor, Transparency = Settings.FOV.FillTransparency, Callback = function(v) Settings.FOV.FillColor = v if Settings.FOV.Filled then Settings.FOV.Circle.Color = v end end})
 FOVGroup:AddSlider({Name = "Inline Transparency", Flag = "FOVFillTransparency", Value = Settings.FOV.FillTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.FOV.FillTransparency = v if Settings.FOV.Filled then Settings.FOV.Circle.Transparency = v end end})
 FOVGroup:AddColorPicker({Name = "Outline Color", Flag = "FOVOutlineColor", Color = Settings.FOV.OutlineColor, Transparency = Settings.FOV.OutlineTransparency, Callback = function(v) Settings.FOV.OutlineColor = v Settings.FOV.OutlineCircle.Color = v if not Settings.FOV.Filled then Settings.FOV.Circle.Color = v end end})
@@ -1798,7 +2045,240 @@ local Optimizations = Tabs.Misc:CreateSection({Name = "Miscellaneous"})
 Optimizations:AddToggle({Name = "Toggle Textures", Flag = "MiscTextures", Value = Settings.Misc.Textures, Callback = function(s) Settings.Misc.Textures = s if s then optimizeMap() else revertMap() end end})
 
 local Safety = Tabs.Misc:CreateSection({Name = "Safety", Side = "Right"})
+
 Safety:AddToggle({Name = "Rejoin on Votekick", Flag = "VotekickRejoiner", Value = Settings.Misc.VotekickRejoiner, Callback = function(s) Settings.Misc.VotekickRejoiner = s if s then initializeVotekickRejoiner() end end})
+
+Safety:AddButton({
+    Name = "Rejoin",
+    Callback = function() kickAndRejoin() end
+})
+
+local ViewModelChams = Tabs.Misc:CreateSection({Name = "ViewModel Chams", Side = "Right"})
+
+ViewModelChams:AddToggle({
+    Name = "Arms Enabled",
+    Flag = "ViewModelChamsArmsEnabled",
+    Value = Settings.ViewModelChams.Arms.Enabled,
+    Callback = function(enabled)
+        Settings.ViewModelChams.Arms.Enabled = enabled
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddColorPicker({
+    Name = "Arms Color",
+    Flag = "ViewModelChamsArmsColor",
+    Color = Settings.ViewModelChams.Arms.Color,
+    Callback = function(color)
+        Settings.ViewModelChams.Arms.Color = color
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddDropdown({
+    Name = "Arms Material",
+    Flag = "ViewModelChamsArmsMaterial",
+    List = {"SmoothPlastic", "ForceField", "Neon", "Glass", "Fabric"},
+    Value = tostring(Settings.ViewModelChams.Arms.Material),
+    Callback = function(material)
+        Settings.ViewModelChams.Arms.Material = Enum.Material[material]
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddSlider({
+    Name = "Arms Transparency",
+    Flag = "ViewModelChamsArmsTransparency",
+    Value = Settings.ViewModelChams.Arms.Transparency,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Callback = function(value)
+        Settings.ViewModelChams.Arms.Transparency = value
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddToggle({
+    Name = "Weapon Enabled",
+    Flag = "ViewModelChamsWeaponsEnabled",
+    Value = Settings.ViewModelChams.Weapons.Enabled,
+    Callback = function(enabled)
+        Settings.ViewModelChams.Weapons.Enabled = enabled
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddColorPicker({
+    Name = "Weapon Color",
+    Flag = "ViewModelChamsWeaponsColor",
+    Color = Settings.ViewModelChams.Weapons.Color,
+    Callback = function(color)
+        Settings.ViewModelChams.Weapons.Color = color
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddDropdown({
+    Name = "Weapon Material",
+    Flag = "ViewModelChamsWeaponsMaterial",
+    List = {"SmoothPlastic", "ForceField", "Neon", "Glass", "Fabric"},
+    Value = tostring(Settings.ViewModelChams.Weapons.Material),
+    Callback = function(material)
+        Settings.ViewModelChams.Weapons.Material = Enum.Material[material]
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddSlider({
+    Name = "Weapon Transparency",
+    Flag = "ViewModelChamsWeaponsTransparency",
+    Value = Settings.ViewModelChams.Weapons.Transparency,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Callback = function(value)
+        Settings.ViewModelChams.Weapons.Transparency = value
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddToggle({
+    Name = "Texture Chams Enabled",
+    Flag = "ViewModelChamsTexturesEnabled",
+    Value = Settings.ViewModelChams.Textures.Enabled,
+    Callback = function(enabled)
+        Settings.ViewModelChams.Textures.Enabled = enabled
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddToggle({
+    Name = "Remove Textures",
+    Flag = "ViewModelChamsTexturesRemove",
+    Value = Settings.ViewModelChams.Textures.RemoveTextures,
+    Callback = function(enabled)
+        Settings.ViewModelChams.Textures.RemoveTextures = enabled
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddDropdown({
+    Name = "Texture Material",
+    Flag = "ViewModelChamsTexturesMaterial",
+    List = {"SmoothPlastic", "ForceField", "Neon", "Glass", "Fabric"},
+    Value = tostring(Settings.ViewModelChams.Textures.Material),
+    Callback = function(material)
+        Settings.ViewModelChams.Textures.Material = Enum.Material[material]
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddColorPicker({
+    Name = "Texture Color",
+    Flag = "ViewModelChamsTexturesColor",
+    Color = Settings.ViewModelChams.Textures.Color,
+    Callback = function(color)
+        Settings.ViewModelChams.Textures.Color = color
+        updateViewModelChams()
+    end
+})
+
+ViewModelChams:AddSlider({
+    Name = "Texture Transparency",
+    Flag = "ViewModelChamsTexturesTransparency",
+    Value = Settings.ViewModelChams.Textures.Transparency,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Callback = function(value)
+        Settings.ViewModelChams.Textures.Transparency = value
+        updateViewModelChams()
+    end
+})
+
+local LightingSec = Tabs.Misc:CreateSection({Name = "Lighting", Side = "Left"})
+
+LightingSec:AddToggle({
+    Name = "Ambient Enabled",
+    Flag = "AmbientEnabled",
+    Value = Settings.Lighting.Ambient.Enabled,
+    Callback = function(enabled)
+        Settings.Lighting.Ambient.Enabled = enabled
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddColorPicker({
+    Name = "Ambient Color",
+    Flag = "AmbientColor",
+    Color = Settings.Lighting.Ambient.Color,
+    Callback = function(color)
+        Settings.Lighting.Ambient.Color = color
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddToggle({
+    Name = "Outdoor Ambient Enabled",
+    Flag = "OutdoorAmbientEnabled",
+    Value = Settings.Lighting.OutdoorAmbient.Enabled,
+    Callback = function(enabled)
+        Settings.Lighting.OutdoorAmbient.Enabled = enabled
+        UpdateLighting() 
+    end
+})
+
+LightingSec:AddColorPicker({
+    Name = "Outdoor Ambient Color",
+    Flag = "OutdoorAmbientColor",
+    Color = Settings.Lighting.OutdoorAmbient.Color,
+    Callback = function(color)
+        Settings.Lighting.OutdoorAmbient.Color = color
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddToggle({
+    Name = "Clock Time Enabled",
+    Flag = "ClockTimeEnabled",
+    Value = Settings.Lighting.ClockTime.Enabled,
+    Callback = function(enabled)
+        Settings.Lighting.ClockTime.Enabled = enabled
+        UpdateLighting()
+    end
+})
+
+LightingSec:AddSlider({
+    Name = "Clock Time",
+    Flag = "ClockTime",
+    Value = Settings.Lighting.ClockTime.Time,
+    Min = 0,
+    Max = 24,
+    Rounding = 2,
+    Callback = function(value)
+        Settings.Lighting.ClockTime.Time = value
+        UpdateLighting()
+    end
+})
+
+Lighting:GetPropertyChangedSignal("Ambient"):Connect(function()
+    if Settings.Lighting.Ambient.Enabled then
+        Lighting.Ambient = Settings.Lighting.Ambient.Color
+    end
+end)
+
+Lighting:GetPropertyChangedSignal("OutdoorAmbient"):Connect(function()
+    if Settings.Lighting.OutdoorAmbient.Enabled then
+        Lighting.OutdoorAmbient = Settings.Lighting.OutdoorAmbient.Color
+    end
+end)
+
+Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function()
+    if Settings.Lighting.ClockTime.Enabled then
+        Lighting.ClockTime = Settings.Lighting.ClockTime.Time
+    end
+end)
 
 local ConfigGroup = Tabs.Configs:CreateSection({Name = "Configurations", Side = "Left"})
 
@@ -1807,15 +2287,10 @@ local ConfigNameTextbox = ConfigGroup:AddTextBox({Name = "Config Name", Flag = "
 local ConfigListDropdown
 local function createConfigDropdown()
     if ConfigListDropdown then
-        pcall(function()
-            ConfigListDropdown:Remove()
-            ConfigListDropdown = nil
-        end)
+        pcall(function() ConfigListDropdown:Remove() ConfigListDropdown = nil end)
     end
-    
     local listToUse = #Configs.Files > 0 and Configs.Files or {"None"}
     local valueToUse = (#Configs.Files > 0 and Configs.Current and table.find(Configs.Files, Configs.Current)) and Configs.Current or listToUse[1]
-    
     ConfigListDropdown = ConfigGroup:AddDropdown({
         Name = "Config List",
         List = listToUse,
@@ -1824,16 +2299,12 @@ local function createConfigDropdown()
             if selected and selected ~= "None" then
                 Configs.Current = selected
                 if ConfigNameTextbox then
-                    pcall(function()
-                        ConfigNameTextbox:Set(selected)
-                    end)
+                    pcall(function() ConfigNameTextbox:Set(selected) end)
                 end
             else
                 Configs.Current = ""
                 if ConfigNameTextbox then
-                    pcall(function()
-                        ConfigNameTextbox:Set("")
-                    end)
+                    pcall(function() ConfigNameTextbox:Set("") end)
                 end
             end
         end
@@ -1926,6 +2397,9 @@ Library:OnUnload(function()
     Settings.FOV.Circle:Remove() Settings.FOV.OutlineCircle:Remove()
     stopMousePreload()
     revertMap()
+    Lighting.Ambient = OriginalLightingProperties.Ambient
+    Lighting.OutdoorAmbient = OriginalLightingProperties.OutdoorAmbient
+    Lighting.ClockTime = OriginalLightingProperties.ClockTime
     if Settings.ThirdPerson.Enabled and Settings.ThirdPerson.ShowCharacter then fakeRepObject:despawn() if currentObj then currentObj:Destroy() currentObj = nil lastPos = nil end end
     for part, props in State.ViewmodelProperties do if part:IsDescendantOf(workspace) then part.Transparency = props.Transparency for _, texture in props.Textures do if texture:IsDescendantOf(game.CoreGui) then texture.Parent = part end end end end
     State.ViewmodelProperties = {}
