@@ -135,7 +135,8 @@ local Settings = {
         FillColor = Color3.fromRGB(0, 0, 0), 
         FillTransparency = 0.2, 
         OutlineColor = Color3.fromRGB(255, 255, 255), 
-        OutlineTransparency = 1
+        OutlineTransparency = 1,
+        Dynamic = false
     },
     Chams = {
         Enabled = false, 
@@ -1087,7 +1088,7 @@ local function updateViewModelChams()
                     Transparency = part.Transparency,
                     Material = part.Material,
                     Color = part.Color,
-                    Blacklisted = part.Transparency > 0.9,
+                    Blacklisted = part.Transparency > 0 or part.Reflectance > 0,
                     Textures = {}
                 }
                 for _, c in ipairs(part:GetChildren()) do
@@ -1138,7 +1139,7 @@ local function updateViewModelChams()
                     Transparency = part.Transparency,
                     Material = part.Material,
                     Color = part.Color,
-                    Blacklisted = part.Transparency > 0.9,
+                    Blacklisted = part.Transparency > 0 or part.Reflectance > 0,
                     Textures = {}
                 }
                 for _, c in ipairs(part:GetChildren()) do
@@ -1988,11 +1989,12 @@ local FOVGroup = Tabs.Main:CreateSection({Name = "FOV", Side = "Right"})
 FOVGroup:AddToggle({Name = "Show FOV Circle", Flag = "FOVEnabled", Value = Settings.FOV.Enabled, Callback = function(s) Settings.FOV.Enabled = s Settings.FOV.Circle.Visible = s Settings.FOV.OutlineCircle.Visible = s end})
 FOVGroup:AddToggle({Name = "Follow Gun", Flag = "FOVFollowGun", Value = Settings.FOV.FollowGun, Callback = function(s) Settings.FOV.FollowGun = s end})
 FOVGroup:AddToggle({Name = "Fill FOV Circle", Flag = "FOVFilled", Value = Settings.FOV.Filled, Callback = function(s) Settings.FOV.Filled = s Settings.FOV.Circle.Filled = s Settings.FOV.Circle.Color = s and Settings.FOV.FillColor or Settings.FOV.OutlineColor Settings.FOV.Circle.Transparency = s and Settings.FOV.FillTransparency or Settings.FOV.OutlineTransparency Settings.FOV.Circle.Thickness = s and 0 or 1 if Settings.FOV.Enabled then Settings.FOV.Circle.Visible = true end end})
+FOVGroup:AddToggle({Name = "Dynamic FOV", Flag = "FOVDynamic", Value = Settings.FOV.Dynamic, Callback = function(s) Settings.FOV.Dynamic = s end})
 FOVGroup:AddColorPicker({Name = "Inline Color", Flag = "FOVFillColor", Color = Settings.FOV.FillColor, Transparency = Settings.FOV.FillTransparency, Callback = function(v) Settings.FOV.FillColor = v if Settings.FOV.Filled then Settings.FOV.Circle.Color = v end end})
 FOVGroup:AddSlider({Name = "Inline Transparency", Flag = "FOVFillTransparency", Value = Settings.FOV.FillTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.FOV.FillTransparency = v if Settings.FOV.Filled then Settings.FOV.Circle.Transparency = v end end})
 FOVGroup:AddColorPicker({Name = "Outline Color", Flag = "FOVOutlineColor", Color = Settings.FOV.OutlineColor, Transparency = Settings.FOV.OutlineTransparency, Callback = function(v) Settings.FOV.OutlineColor = v Settings.FOV.OutlineCircle.Color = v if not Settings.FOV.Filled then Settings.FOV.Circle.Color = v end end})
 FOVGroup:AddSlider({Name = "Outline Transparency", Flag = "FOVOutlineTransparency", Value = Settings.FOV.OutlineTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.FOV.OutlineTransparency = v Settings.FOV.OutlineCircle.Transparency = v if not Settings.FOV.Filled then Settings.FOV.Circle.Transparency = v end end})
-FOVGroup:AddSlider({Name = "FOV Radius", Flag = "FOVRadius", Value = Settings.FOV.Radius, Min = 5, Max = 1000, Rounding = 0, Callback = function(v) Settings.FOV.Radius = v Settings.FOV.Circle.Radius = v Settings.FOV.OutlineCircle.Radius = v end})
+FOVGroup:AddSlider({Name = "FOV Radius", Flag = "FOVRadius", Value = Settings.FOV.Radius, Min = 5, Max = 1000, Rounding = 0, Callback = function(v) Settings.FOV.Radius = v Settings.FOV.Circle.Radius = v Settings.FOV.OutlineCircle.Radius = v State.ogRadius = {v, v, v} end})
 
 local ChamsGroup = Tabs.Visuals:CreateSection({Name = "Chams"})
 ChamsGroup:AddToggle({Name = "Enabled", Flag = "ChamsEnabled", Value = Settings.Chams.Enabled, Callback = function(s)
@@ -2383,6 +2385,85 @@ end
 
 UserInputService.InputBegan:Connect(function(i, gp) if gp then return end if i.KeyCode == Enum.KeyCode.Space then handleBhop() end end)
 
+State.lastAimState = false
+State.fovTween = nil
+State.ogRadius = {Settings.FOV.Radius, Settings.FOV.Circle.Radius, Settings.FOV.OutlineCircle.Radius}
+
+local function onCameraFOVChanged(newFOV, oldFOV)
+    if not Settings.FOV.Dynamic then return end
+    local controller = weaponInterface.getActiveWeaponController()
+    local isAiming = controller and controller:getActiveWeapon() and controller:getActiveWeapon()._aiming
+    
+    if isAiming and not State.lastAimState then
+        if State.fovTween then
+            State.fovTween:Cancel()
+            State.fovTween = nil
+        end
+        
+        local scaleFactor = oldFOV / newFOV
+        Settings.FOV.Radius = Settings.FOV.Radius * scaleFactor
+        Settings.FOV.Circle.Radius = Settings.FOV.Circle.Radius * scaleFactor
+        Settings.FOV.OutlineCircle.Radius = Settings.FOV.OutlineCircle.Radius * scaleFactor
+        State.lastAimState = true
+    elseif not isAiming and State.lastAimState then
+        if State.fovTween then
+            State.fovTween:Cancel()
+        end
+        
+        local targetValues = {
+            Radius = State.ogRadius[1],
+            CircleRadius = State.ogRadius[2],
+            OutlineCircleRadius = State.ogRadius[3]
+        }
+        
+        local currentValues = {
+            Radius = Settings.FOV.Radius,
+            CircleRadius = Settings.FOV.Circle.Radius,
+            OutlineCircleRadius = Settings.FOV.OutlineCircle.Radius
+        }
+        
+        local tweenObject = Instance.new("NumberValue")
+        tweenObject.Value = 0
+        
+        State.fovTween = TweenService:Create(
+            tweenObject,
+            TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {Value = 1}
+        )
+        State.fovTween.Completed:Connect(function()
+            tweenObject:Destroy()
+            State.fovTween = nil
+        end)
+        tweenObject:GetPropertyChangedSignal("Value"):Connect(function()
+            local progress = tweenObject.Value
+            Settings.FOV.Radius = currentValues.Radius + (targetValues.Radius - currentValues.Radius) * progress
+            Settings.FOV.Circle.Radius = currentValues.CircleRadius + (targetValues.CircleRadius - currentValues.CircleRadius) * progress
+            Settings.FOV.OutlineCircle.Radius = currentValues.OutlineCircleRadius + (targetValues.OutlineCircleRadius - currentValues.OutlineCircleRadius) * progress
+        end)
+        State.fovTween:Play()
+        State.lastAimState = false
+    elseif isAiming and State.lastAimState then
+        local scaleFactor = oldFOV / newFOV
+        Settings.FOV.Radius = Settings.FOV.Radius * scaleFactor
+        Settings.FOV.Circle.Radius = Settings.FOV.Circle.Radius * scaleFactor
+        Settings.FOV.OutlineCircle.Radius = Settings.FOV.OutlineCircle.Radius * scaleFactor
+    end
+end
+
+local function FOVListener()
+    local lastFOV = Camera.FieldOfView
+    
+    local connection = Camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
+        local newFOV = Camera.FieldOfView
+        onCameraFOVChanged(newFOV, lastFOV)
+        lastFOV = newFOV
+    end)
+    
+    return connection
+end
+
+local CameraFOVListener = FOVListener()
+
 Library:OnUnload(function()
     for p in State.Storage.ESPCache do uncacheObject(p) end
     for p in State.Highlights do removeHighlight(p) end
@@ -2405,4 +2486,5 @@ Library:OnUnload(function()
     State.ViewmodelProperties = {}
     local gunTexFolder = game.CoreGui:FindFirstChild("guntex")
     if gunTexFolder then gunTexFolder:Destroy() end
+    if CameraFOVListener then CameraFOVListener:Disconnect() end
 end)
