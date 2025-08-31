@@ -518,6 +518,26 @@ local function getBodyPart(player, name)
     end
 end
 
+local TargetMeshIds = {
+    ["rbxassetid://4049240323"] = true, -- Arms
+    ["rbxassetid://4049240209"] = true, -- Legs
+    ["rbxassetid://4049240078"] = true,  -- Torso
+    ["rbxassetid://6179256256"] = true,  -- Head
+}
+
+local function getBodyParts(player)
+    local parts = {}
+    for _, part in player:GetChildren() do
+        if part:IsA("BasePart") then
+            local mesh = part:FindFirstChildOfClass("SpecialMesh")
+            if mesh and TargetMeshIds[mesh.MeshId] then
+                table.insert(parts, part)
+            end
+        end
+    end
+    return parts
+end
+
 local function isAlly(player)
     local helmet = player:FindFirstChildWhichIsA("Folder") and player:FindFirstChildWhichIsA("Folder"):FindFirstChildOfClass("MeshPart")
     if not helmet then return false end
@@ -533,9 +553,8 @@ local function getClosestPlayer(useFOV, hitPart)
         if not player:IsDescendantOf(workspace.Ignore.DeadBody) then
             local ally = isAlly(player)
             if not (Settings.Chams.TeamCheck and ally) then
-                local partsToCheck = (hitPart == "Closest Part") and {"Head", "Torso"} or {hitPart}
-                for _, partName in partsToCheck do
-                    local part = getBodyPart(player, partName)
+                local partsToCheck = (hitPart == "Closest Part") and getBodyParts(player) or {getBodyPart(player, hitPart)}
+                for _, part in partsToCheck do
                     if part then
                         local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
                         if onScreen then
@@ -819,8 +838,15 @@ local function updateChams()
                     if Settings.ESP.MaxDistance.Enabled and dist > Settings.ESP.MaxDistance.Value then removeHighlight(p)
                     else
                         local h = applyHighlight(p)
-                        local vis = isVisible(torso, Settings.ESP.VisibilityCheck)
-                        if Settings.ESP.VisibilityCheck and not vis then h.FillColor = Color3.fromRGB(255, 0, 0) h.OutlineColor = Color3.fromRGB(255, 0, 0) h.FillTransparency = 0.5 h.OutlineTransparency = 0.2
+                        local vis = function()
+                            for _, part in ipairs(getBodyParts(p)) do
+                                if isVisible(part, Settings.ESP.VisibilityCheck) then
+                                    return true
+                                end
+                            end
+                            return false
+                        end
+                        if Settings.ESP.VisibilityCheck and not vis() then h.FillColor = Color3.fromRGB(255, 0, 0) h.OutlineColor = Color3.fromRGB(255, 0, 0) h.FillTransparency = 0.5 h.OutlineTransparency = 0.2
                         else h.FillColor = Settings.Chams.Fill.Color h.OutlineColor = Settings.Chams.Outline.Color h.FillTransparency = Settings.Chams.Fill.Transparency h.OutlineTransparency = Settings.Chams.Outline.Transparency end
                     end
                 end
@@ -1122,7 +1148,7 @@ local function updateViewModelChams()
                     Transparency = part.Transparency,
                     Material = part.Material,
                     Color = part.Color,
-                    Blacklisted = part.Transparency > 0.9,
+                    Blacklisted = part.Transparency > 0 or part.Reflectance > 0,
                     Textures = {}
                 }
                 for _, c in ipairs(part:GetChildren()) do
@@ -1173,7 +1199,7 @@ local function updateViewModelChams()
                     Transparency = part.Transparency,
                     Material = part.Material,
                     Color = part.Color,
-                    Blacklisted = part.Transparency > 0.9,
+                    Blacklisted = part.Transparency > 0 or part.Reflectance > 0,
                     Textures = {}
                 }
                 for _, c in ipairs(part:GetChildren()) do
