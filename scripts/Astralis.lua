@@ -138,6 +138,13 @@ local Settings = {
         OutlineTransparency = 1,
         Dynamic = false
     },
+        Snapline = {
+        Enabled = false,
+        Color = Color3.fromRGB(255, 255, 255),
+        Thickness = 1,
+        Transparency = 1,
+        Line = drawing.new("Line")
+    },
     Chams = {
         Enabled = false, 
         TeamCheck = true, 
@@ -324,7 +331,7 @@ fov.OutlineCircle.Visible = fov.Enabled
 -- State
 local State = {
     IsRightClickHeld = false, TargetPart = nil, OriginalProperties = {}, CachedProperties = {}, PlayersToDraw = {}, Highlights = {}, Storage = {ESPCache = {}},
-    MousePreload = {Active = false, LastTime = 0, Interval = 5, Connection = nil}, CrosshairUpdate = nil, ThirdPersonConnection = nil, ViewmodelProperties = {}, AntiAimConnection = nil
+    MousePreload = {Active = false, LastTime = 0, Interval = 5, Connection = nil}, CrosshairUpdate = nil, ThirdPersonConnection = nil, ViewmodelProperties = {}, AntiAimConnection = nil, SnaplineUpdate = nil
 }
 
 local function toggleCrosshair(state)
@@ -429,7 +436,7 @@ end
 local function getBarrelLocation()
     local controller = weaponInterface.getActiveWeaponController()
     local weapon = controller and controller:getActiveWeapon()
-    return weapon and not weapon._aiming and weapon._barrelPart and Camera:WorldToViewportPoint(weapon._barrelPart.CFrame * Vector3.new(0, 0, -100))
+    return weapon and not weapon._aiming and weapon._barrelPart and Camera:WorldToViewportPoint(weapon._barrelPart.CFrame * Vector3.new(0, 0, 0)) -- believe it or not but the * actually serves a purpose
 end
 
 local function updateFOVCirclePosition()
@@ -464,6 +471,7 @@ local function updateFOVCirclePosition()
         fov.OutlineCircle.Position = center
     end
 end
+
 
 local function getPlayers()
     local entityList = {}
@@ -770,6 +778,32 @@ local function applyHighlight(p)
 end
 
 local function removeHighlight(p) if State.Highlights[p] then State.Highlights[p]:Destroy() State.Highlights[p] = nil end end
+
+local function updateSnapline()
+    local line = Settings.Snapline.Line
+    line.Visible = false
+    if not Settings.Snapline.Enabled then return end
+
+    local controller = weaponInterface.getActiveWeaponController()
+    local isAiming = controller and controller:getActiveWeapon() and controller:getActiveWeapon()._aiming
+
+    local barrelPos = getBarrelLocation()
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local fromPos = barrelPos and Vector2.new(barrelPos.X, barrelPos.Y) or center
+
+    local hitPart = getClosestPlayer(Settings.SilentAim.UseFOV, Settings.SilentAim.HitPart)
+    if not hitPart then return end
+    if Settings.SilentAim.WallCheck and not isVisible(hitPart, true) then return end
+    local hitPos, onScreen = Camera:WorldToViewportPoint(hitPart.Position)
+    if not onScreen then return end
+    local hitScreen = Vector2.new(hitPos.X, hitPos.Y)
+    line.From = fromPos
+    line.To = hitScreen
+    line.Color = Settings.Snapline.Color
+    line.Thickness = Settings.Snapline.Thickness
+    line.Transparency = Settings.Snapline.Transparency
+    line.Visible = true
+end
 
 local function updateChams()
     if not Settings.Chams.Enabled then for p in State.Highlights do removeHighlight(p) end return end
@@ -1088,7 +1122,7 @@ local function updateViewModelChams()
                     Transparency = part.Transparency,
                     Material = part.Material,
                     Color = part.Color,
-                    Blacklisted = part.Transparency > 0 or part.Reflectance > 0,
+                    Blacklisted = part.Transparency > 0.9,
                     Textures = {}
                 }
                 for _, c in ipairs(part:GetChildren()) do
@@ -1139,7 +1173,7 @@ local function updateViewModelChams()
                     Transparency = part.Transparency,
                     Material = part.Material,
                     Color = part.Color,
-                    Blacklisted = part.Transparency > 0 or part.Reflectance > 0,
+                    Blacklisted = part.Transparency > 0.9,
                     Textures = {}
                 }
                 for _, c in ipairs(part:GetChildren()) do
@@ -1554,6 +1588,7 @@ local function loadConfig(name)
         ["FOV.OutlineColor"] = "FOVOutlineColor",
         ["FOV.OutlineTransparency"] = "FOVOutlineTransparency",
         ["FOV.Radius"] = "FOVRadius",
+        ["FOV.Dynamic"] = "FOVDynamic",
         ["Chams.Enabled"] = "ChamsEnabled",
         ["Chams.Fill.Color"] = "ChamsFillColor",
         ["Chams.Outline.Color"] = "ChamsOutlineColor",
@@ -1616,7 +1651,11 @@ local function loadConfig(name)
         ["Lighting.OutdoorAmbient.Enabled"] = "OutdoorAmbientEnabled",
         ["Lighting.OutdoorAmbient.Color"] = "OutdoorAmbientColor",
         ["Lighting.ClockTime.Enabled"] = "ClockTimeEnabled",
-        ["Lighting.ClockTime.Time"] = "ClockTime"
+        ["Lighting.ClockTime.Time"] = "ClockTime",
+        ["Snapline.Enabled"] = "SnaplineEnabled",
+        ["Snapline.Color"] = "SnaplineColor",
+        ["Snapline.Thickness"] = "SnaplineThickness",
+        ["Snapline.Transparency"] = "SnaplineTransparency"
     }) do
         local value = configData[settingPath]
         if value ~= nil then
@@ -1673,6 +1712,15 @@ local function loadConfig(name)
             initializeSilentAim()
         else
             cleanupSilentAim()
+        end
+    end
+    if configData["Snapline.Enabled"] ~= nil then
+        Settings.Snapline.Enabled = configData["Snapline.Enabled"]
+        if configData["Snapline.Enabled"] then
+            State.SnaplineUpdate = RunService.RenderStepped:Connect(updateSnapline)
+        else
+            if State.SnaplineUpdate then State.SnaplineUpdate:Disconnect() State.SnaplineUpdate = nil end
+            Settings.Snapline.Line.Visible = false
         end
     end
     if configData["ESP.Enabled"] ~= nil then
@@ -1927,6 +1975,21 @@ SilentAimGroup:AddSlider({Name = "Hit Chance", Flag = "SilentAimHitChance", Valu
 SilentAimGroup:AddToggle({Name = "Use FOV", Flag = "SilentAimUseFOV", Value = Settings.SilentAim.UseFOV, Callback = function(s) Settings.SilentAim.UseFOV = s end})
 SilentAimGroup:AddToggle({Name = "Wall Check", Flag = "SilentAimWallCheck", Value = Settings.SilentAim.WallCheck, Callback = function(s) Settings.SilentAim.WallCheck = s end})
 
+SilentAimGroup:AddToggle({
+    Name = "Snaplines",
+    Flag = "SnaplineEnabled",
+    Value = Settings.Snapline.Enabled,
+    Callback = function(s)
+        Settings.Snapline.Enabled = s
+        if s then
+            State.SnaplineUpdate = RunService.RenderStepped:Connect(updateSnapline)
+        else
+            if State.SnaplineUpdate then State.SnaplineUpdate:Disconnect() State.SnaplineUpdate = nil end
+            Settings.Snapline.Line.Visible = false
+        end
+    end
+})
+
 local ESPGroup = Tabs.Visuals:CreateSection({Name = "ESP"})
 ESPGroup:AddToggle({Name = "Enabled", Flag = "ESPEnabled", Value = Settings.ESP.Enabled, Callback = function(s)
     Settings.ESP.Enabled = s
@@ -1957,6 +2020,7 @@ ESPGroup:AddToggle({Name = "Health Bar", Flag = "ESPHealthBar", Value = Settings
     end 
 end})
 
+
 ESPCustomization:AddColorPicker({Name = "Health Bar Color", Flag = "ESPHealthBarColor", Color = Settings.ESP.Features.HealthBar.Color, Callback = function(v) 
     Settings.ESP.Features.HealthBar.Color = v 
     for _, cache in State.Storage.ESPCache do 
@@ -1970,6 +2034,43 @@ ESPCustomization:AddColorPicker({Name = "Health Bar Background", Flag = "ESPHeal
         if cache.HealthBarBackground then cache.HealthBarBackground.Color = v end
     end 
 end})
+
+ESPCustomization:AddColorPicker({
+    Name = "Snapline Color",
+    Flag = "SnaplineColor",
+    Color = Settings.Snapline.Color,
+    Transparency = Settings.Snapline.Transparency,
+    Callback = function(v)
+        Settings.Snapline.Color = v
+        Settings.Snapline.Line.Color = v
+    end
+})
+
+ESPCustomization:AddSlider({
+    Name = "Snapline Thickness",
+    Flag = "SnaplineThickness",
+    Value = Settings.Snapline.Thickness,
+    Min = 1,
+    Max = 5,
+    Rounding = 0,
+    Callback = function(v)
+        Settings.Snapline.Thickness = v
+        Settings.Snapline.Line.Thickness = v
+    end
+})
+
+ESPCustomization:AddSlider({
+    Name = "Snapline Transparency",
+    Flag = "SnaplineTransparency",
+    Value = Settings.Snapline.Transparency,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Callback = function(v)
+        Settings.Snapline.Transparency = v
+        Settings.Snapline.Line.Transparency = v
+    end
+})
 
 local HealthBarCustomization = Tabs.Visuals:CreateSection({Name = "Health Bar Settings", Side = "Right"})
 HealthBarCustomization:AddSlider({Name = "Width", Flag = "ESPHealthBarWidth", Value = Settings.ESP.Features.HealthBar.Width, Min = 1, Max = 5, Rounding = 0, Callback = function(v) Settings.ESP.Features.HealthBar.Width = v end})
@@ -1989,13 +2090,12 @@ local FOVGroup = Tabs.Main:CreateSection({Name = "FOV", Side = "Right"})
 FOVGroup:AddToggle({Name = "Show FOV Circle", Flag = "FOVEnabled", Value = Settings.FOV.Enabled, Callback = function(s) Settings.FOV.Enabled = s Settings.FOV.Circle.Visible = s Settings.FOV.OutlineCircle.Visible = s end})
 FOVGroup:AddToggle({Name = "Follow Gun", Flag = "FOVFollowGun", Value = Settings.FOV.FollowGun, Callback = function(s) Settings.FOV.FollowGun = s end})
 FOVGroup:AddToggle({Name = "Fill FOV Circle", Flag = "FOVFilled", Value = Settings.FOV.Filled, Callback = function(s) Settings.FOV.Filled = s Settings.FOV.Circle.Filled = s Settings.FOV.Circle.Color = s and Settings.FOV.FillColor or Settings.FOV.OutlineColor Settings.FOV.Circle.Transparency = s and Settings.FOV.FillTransparency or Settings.FOV.OutlineTransparency Settings.FOV.Circle.Thickness = s and 0 or 1 if Settings.FOV.Enabled then Settings.FOV.Circle.Visible = true end end})
-FOVGroup:AddToggle({Name = "Dynamic FOV", Flag = "FOVDynamic", Value = Settings.FOV.Dynamic, Callback = function(s) Settings.FOV.Dynamic = s end})
 FOVGroup:AddColorPicker({Name = "Inline Color", Flag = "FOVFillColor", Color = Settings.FOV.FillColor, Transparency = Settings.FOV.FillTransparency, Callback = function(v) Settings.FOV.FillColor = v if Settings.FOV.Filled then Settings.FOV.Circle.Color = v end end})
 FOVGroup:AddSlider({Name = "Inline Transparency", Flag = "FOVFillTransparency", Value = Settings.FOV.FillTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.FOV.FillTransparency = v if Settings.FOV.Filled then Settings.FOV.Circle.Transparency = v end end})
 FOVGroup:AddColorPicker({Name = "Outline Color", Flag = "FOVOutlineColor", Color = Settings.FOV.OutlineColor, Transparency = Settings.FOV.OutlineTransparency, Callback = function(v) Settings.FOV.OutlineColor = v Settings.FOV.OutlineCircle.Color = v if not Settings.FOV.Filled then Settings.FOV.Circle.Color = v end end})
 FOVGroup:AddSlider({Name = "Outline Transparency", Flag = "FOVOutlineTransparency", Value = Settings.FOV.OutlineTransparency, Min = 0, Max = 1, Rounding = 2, Callback = function(v) Settings.FOV.OutlineTransparency = v Settings.FOV.OutlineCircle.Transparency = v if not Settings.FOV.Filled then Settings.FOV.Circle.Transparency = v end end})
 FOVGroup:AddSlider({Name = "FOV Radius", Flag = "FOVRadius", Value = Settings.FOV.Radius, Min = 5, Max = 1000, Rounding = 0, Callback = function(v) Settings.FOV.Radius = v Settings.FOV.Circle.Radius = v Settings.FOV.OutlineCircle.Radius = v State.ogRadius = {v, v, v} end})
-
+FOVGroup:AddToggle({Name = "Dynamic FOV", Flag = "FOVDynamic", Value = Settings.FOV.Dynamic, Callback = function(s) Settings.FOV.Dynamic = s end})
 local ChamsGroup = Tabs.Visuals:CreateSection({Name = "Chams"})
 ChamsGroup:AddToggle({Name = "Enabled", Flag = "ChamsEnabled", Value = Settings.Chams.Enabled, Callback = function(s)
     Settings.Chams.Enabled = s
@@ -2473,6 +2573,8 @@ Library:OnUnload(function()
     if State.InputBeganConnection then State.InputBeganConnection:Disconnect() end
     if State.InputEndedConnection then State.InputEndedConnection:Disconnect() end
     if State.RenderSteppedConnection then State.RenderSteppedConnection:Disconnect() end
+    Settings.Snapline.Line:Remove()
+    if State.SnaplineUpdate then State.SnaplineUpdate:Disconnect() end
     if State.CrosshairUpdate then State.CrosshairUpdate:Disconnect() end
     for _, d in Settings.Crosshair.Drawings do d:Remove() end
     Settings.FOV.Circle:Remove() Settings.FOV.OutlineCircle:Remove()
@@ -2484,7 +2586,7 @@ Library:OnUnload(function()
     if Settings.ThirdPerson.Enabled and Settings.ThirdPerson.ShowCharacter then fakeRepObject:despawn() if currentObj then currentObj:Destroy() currentObj = nil lastPos = nil end end
     for part, props in State.ViewmodelProperties do if part:IsDescendantOf(workspace) then part.Transparency = props.Transparency for _, texture in props.Textures do if texture:IsDescendantOf(game.CoreGui) then texture.Parent = part end end end end
     State.ViewmodelProperties = {}
+    
     local gunTexFolder = game.CoreGui:FindFirstChild("guntex")
     if gunTexFolder then gunTexFolder:Destroy() end
-    if CameraFOVListener then CameraFOVListener:Disconnect() end
 end)
